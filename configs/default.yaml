@@ -1,0 +1,92 @@
+# Default configuration. Values follow Table 3.4 of the report unless noted.
+seed: 42
+paths:
+  kaggle_root: /kaggle/input/brain-tumor-mri-dataset      # Nickparvar (2021): Training/ and Testing/
+  figshare_root: null          # folder of figshare .mat files (Cheng et al., 2015); optional but needed for YOLO + A_XAI reference masks
+  brats_africa_root: null      # optional external test set (pre-extracted PNG slices + masks)
+  work_dir: /kaggle/working/bcd
+data:
+  image_size: 448
+  dedupe_hamming: 4            # perceptual-hash distance treated as duplicate
+  # shares of the cleaned Kaggle Training folder; Kaggle Testing folder is the test set
+  teacher_pool: 0.35           # data the cloud teacher is adapted on (central/cloud data)
+  seed: 0.10                   # initial student fine-tuning
+  validation: 0.10
+  stream: 0.45                 # simulated deployment stream
+  stream_limit: null           # cap number of stream cases (set e.g. 1500 to save GPU time)
+  test_limit: null
+  round_eval_size: 300         # fixed test subset evaluated after each distillation round
+classes: [glioma, meningioma, pituitary, no_tumour]
+no_tumour_class: no_tumour
+models:
+  student: Qwen/Qwen2-VL-2B-Instruct
+  teacher: Qwen/Qwen2-VL-7B-Instruct
+  teacher_4bit: true
+  dtype: float16               # T4 GPUs do not support bfloat16
+  max_new_tokens_plan: 160         # shortened to fit the free GPU budget
+yolo:
+  weights: yolov8n.pt
+  epochs: 100
+  imgsz: 448
+  batch: 32
+  conf_keep: 0.25              # tau_YOLO
+gate:
+  alpha: 0.6
+  w1: 0.5
+  w2: 0.25
+  w3: 0.25
+  tau_gate: 0.70               # initial; re-fitted on validation (target FNR) and then controlled
+  tau_xai_min: 0.2            # upper bound; calibrated on validation (see xai_min_quantile)
+  xai_min_quantile: 0.10       # tau_xai_min = min(0.2, 10th pct of A_XAI on correct positive validation cases)
+  tau_yolo_high: 0.6
+  tau_cloud: 0.75
+  kl_delta: 0.5
+  cam_top_mass: 0.10           # keep top 10% of attribution mass for the binary mask
+  target_fnr: 0.05             # used only when tau_mode = fnr
+  tau_mode: budget             # v1.6: tau_gate initialised to an escalation budget on validation, then FAR-controlled
+  escalation_budget: 0.30      # initial share of cases escalated (before overrides)
+  tune_weights: true           # v1.6: w1-w3 chosen on validation by minimum AURC
+  cloud_error_target: 0.05     # v1.6: tau_cloud = smallest threshold with teacher error <= 5% among trusted (validation)
+clinician:
+  budget_per_100: 10           # reviews available per 100 stream cases
+  window: 50                   # N for agreement rate A_hat
+  review_plans: true           # positive escalated cases need plan review (if budget allows)
+distill:
+  T_d: 2.0
+  lam: 0.7
+  mu: 0.5
+  batch_size: 64               # B: buffer size that triggers a round
+  epochs: 2
+  lr: 5.0e-5
+  replay_ratio: 1.0            # replayed seed examples per new example
+  eps_regression: 0.005        # 0.5 percentage points (v1 loop)
+  # v1.9 cumulative online loop (conditions P_v2, B3_v2, B5_v2)
+  round_labels: 150            # a round starts after 150 new verified labels (last ones flushed at stream end)
+  cum_epochs: 1                # one pass over ALL labels so far + replay, warm-started from the deployed adapter
+  cum_lr: 5.0e-5
+  promotion_alpha: 0.05        # reject only if significantly worse on validation accuracy (one-sided McNemar)
+  sens_tol: 0.01               # ... or tumour sensitivity drops by more than 1 percentage point
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  # LoRA on the language model (attention + MLP) AND the vision encoder (attention + MLP), so the image
+  # features themselves can adapt to MRI (v1.3; earlier runs used language-model attention only).
+  target_modules: '.*visual\.blocks\.\d+\.(attn\.(qkv|proj)|mlp\.(fc1|fc2))|.*layers\.\d+\.(self_attn\.(q|k|v|o)_proj|mlp\.(gate|up|down)_proj)'
+class_balanced: true           # weight training examples by inverse class frequency (no_tumour is the minority)
+seed_finetune:
+  epochs: 3
+  lr: 2.0e-4
+  grad_accum: 8
+teacher_adapt:
+  epochs: 3
+  lr: 2.0e-4
+  grad_accum: 8
+recalibration:
+  far_target: 0.02
+  eta_tau: 0.5
+  tau_min: 0.5
+  tau_max: 0.95
+  audit_fraction: 0.10
+runs:
+  seeds: [0, 1, 2]

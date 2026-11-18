@@ -1,0 +1,18 @@
+# Do not upload data, trained models or large outputs
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.npz
+*.npy
+*.zip
+*.jpg
+*.jpeg
+*.png
+!docs/*.png
+adapters/
+runs/
+yolo_runs/
+teacher_cache/
+__pycache__/
+.ipynb_checkpoints/

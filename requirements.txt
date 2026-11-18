@@ -1,0 +1,11 @@
+# Kaggle images already include torch, numpy, pandas, scikit-learn, scipy, pillow, matplotlib.
+transformers>=4.45,<4.52
+accelerate>=0.33
+peft>=0.12
+bitsandbytes>=0.43
+ultralytics>=8.2
+imagehash>=4.3
+h5py>=3.10
+pyyaml>=6.0
+streamlit>=1.35
+pytest>=8.0
